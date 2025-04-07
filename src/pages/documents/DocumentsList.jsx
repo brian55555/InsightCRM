@@ -580,7 +580,7 @@ export default function DocumentsList({ businessId }) {
         mb={3}
       >
         <Typography variant="h5">
-          {businessId ? "Business Documents" : "All Documents"}
+          {businessId ? "" : "All Documents"}
         </Typography>
         <Box>
           <Button

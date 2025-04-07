@@ -39,7 +39,12 @@ const NOTE_CATEGORIES = [
   "Other",
 ];
 
-export default function NotesList({ businessId }) {
+export default function NotesList({
+  businessId,
+  searchQuery = "",
+  filterCategory = "All Categories",
+  filterBusiness = "",
+}) {
   const { user } = useAuth();
   const [notes, setNotes] = useState([]);
   const [businesses, setBusinesses] = useState([]);
@@ -330,6 +335,41 @@ export default function NotesList({ businessId }) {
     return doc.body.textContent || "";
   };
 
+  // Filter notes based on search query, category, and business filter
+  const filteredNotes = notes.filter((note) => {
+    // Filter by search query (title or content)
+    const matchesSearch = searchQuery
+      ? note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        stripHtml(note.content)
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase())
+      : true;
+
+    // Filter by category
+    const matchesCategory =
+      filterCategory === "All Categories" || note.category === filterCategory;
+
+    // Filter by business
+    let matchesBusiness = true;
+    if (businessId) {
+      // If we're already on a business page, no additional filtering needed
+      matchesBusiness = true;
+    } else if (filterBusiness === "recent") {
+      // Filter for recently added (last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      matchesBusiness = new Date(note.created_at) >= sevenDaysAgo;
+    } else if (filterBusiness === "none") {
+      // Filter for no business assigned
+      matchesBusiness = !note.business_id;
+    } else if (filterBusiness) {
+      // Filter for specific business
+      matchesBusiness = note.business_id === filterBusiness;
+    }
+
+    return matchesSearch && matchesCategory && matchesBusiness;
+  });
+
   return (
     <Box>
       <Box
@@ -338,9 +378,7 @@ export default function NotesList({ businessId }) {
         alignItems="center"
         mb={3}
       >
-        <Typography variant="h5">
-          {businessId ? "Business Notes" : "All Notes"}
-        </Typography>
+        <Typography variant="h5">{businessId ? "" : "All Notes"}</Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -352,29 +390,38 @@ export default function NotesList({ businessId }) {
 
       {loading ? (
         <Typography>Loading notes...</Typography>
-      ) : notes.length === 0 ? (
+      ) : filteredNotes.length === 0 ? (
         <Typography>No notes found</Typography>
       ) : (
-        <Grid container spacing={3}>
-          {notes.map((note) => (
-            <Grid item xs={12} sm={6} md={4} key={note.id}>
-              <Card
+        <Box>
+          {/* List View */}
+          <Box sx={{ backgroundColor: "background.paper", borderRadius: 1 }}>
+            {filteredNotes.map((note) => (
+              <Box
+                key={note.id}
                 sx={{
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
+                  p: 2,
+                  borderBottom: "1px solid",
+                  borderColor: "divider",
+                  "&:last-child": { borderBottom: "none" },
+                  "&:hover": { backgroundColor: "action.hover" },
                 }}
               >
-                <CardHeader
-                  title={note.title}
-                  subheader={
+                <Box
+                  display="flex"
+                  justifyContent="space-between"
+                  alignItems="flex-start"
+                >
+                  <Box>
+                    <Typography variant="h6" component="h2">
+                      {note.title}
+                    </Typography>
                     <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        mt: 0.5,
-                      }}
+                      display="flex"
+                      alignItems="center"
+                      gap={1}
+                      mt={0.5}
+                      mb={1}
                     >
                       <Chip
                         label={note.category}
@@ -382,42 +429,63 @@ export default function NotesList({ businessId }) {
                         color="primary"
                         variant="outlined"
                       />
+                      {!businessId && note.businesses && (
+                        <Typography variant="caption" color="text.secondary">
+                          {note.businesses.name}
+                        </Typography>
+                      )}
                       <Typography variant="caption" color="text.secondary">
                         {format(new Date(note.created_at), "MMM d, yyyy")}
                       </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        By:{" "}
+                        {note.users?.full_name ||
+                          note.users?.email ||
+                          "Unknown"}
+                      </Typography>
                     </Box>
-                  }
-                  action={
+                    <Box component="div">
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        color="text.secondary"
+                      >
+                        {stripHtml(note.content).length > 200
+                          ? `${stripHtml(note.content).substring(0, 200)}...`
+                          : stripHtml(note.content)}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Box>
                     <IconButton
                       aria-label="note actions"
                       onClick={(e) => handleMenuOpen(e, note)}
+                      size="small"
                     >
                       <MoreVertIcon />
                     </IconButton>
-                  }
-                />
-                <CardContent sx={{ flexGrow: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    {stripHtml(note.content).length > 150
-                      ? `${stripHtml(note.content).substring(0, 150)}...`
-                      : stripHtml(note.content)}
-                  </Typography>
-                </CardContent>
-                <CardActions>
+                  </Box>
+                </Box>
+                <Box display="flex" gap={1} mt={1}>
                   <Button
                     size="small"
                     onClick={() => handleViewDialogOpen(note)}
+                    variant="outlined"
                   >
                     View
                   </Button>
-                  <Button size="small" onClick={() => handleDialogOpen(note)}>
+                  <Button
+                    size="small"
+                    onClick={() => handleDialogOpen(note)}
+                    variant="outlined"
+                  >
                     Edit
                   </Button>
-                </CardActions>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        </Box>
       )}
 
       {/* Note Actions Menu */}

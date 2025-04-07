@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { styled } from "@mui/material/styles";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Drawer from "@mui/material/Drawer";
 import AppBar from "@mui/material/AppBar";
 import Toolbar from "@mui/material/Toolbar";
@@ -207,63 +208,6 @@ export default function Layout() {
   return (
     <Box sx={{ display: "flex" }}>
       <AppBarStyled position="fixed" open={open}>
-        <Toolbar>
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            onClick={handleDrawerOpen}
-            edge="start"
-            sx={{ mr: 2, ...(open && { display: "none" }) }}
-          >
-            <MenuIcon />
-          </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            InsightCRM
-          </Typography>
-
-          <Tooltip title="User Account">
-            <IconButton
-              color="inherit"
-              onClick={handleUserMenuOpen}
-              size="large"
-            >
-              <Avatar sx={{ width: 32, height: 32, bgcolor: "primary.dark" }}>
-                {user?.email.charAt(0).toUpperCase()}
-              </Avatar>
-            </IconButton>
-          </Tooltip>
-
-          <Menu
-            anchorEl={userMenu}
-            open={Boolean(userMenu)}
-            onClose={handleUserMenuClose}
-            anchorOrigin={{
-              vertical: "bottom",
-              horizontal: "right",
-            }}
-            transformOrigin={{
-              vertical: "top",
-              horizontal: "right",
-            }}
-          >
-            <MenuItem disabled>
-              <Typography variant="body2">{user?.email}</Typography>
-            </MenuItem>
-            <MenuItem disabled>
-              <Typography variant="body2">
-                Role: {userRole || "User"}
-              </Typography>
-            </MenuItem>
-            <Divider />
-            <MenuItem onClick={handleSignOut}>
-              <ListItemIcon>
-                <LogoutIcon fontSize="small" />
-              </ListItemIcon>
-              Sign Out
-            </MenuItem>
-          </Menu>
-        </Toolbar>
-
         {/* Tabs for open businesses */}
         {openTabs.length > 0 && (
           <Tabs
@@ -322,7 +266,6 @@ export default function Layout() {
         </DrawerHeader>
 
         <Divider />
-
         <List>
           {menuItems.map((item) => (
             <ListItem key={item.text} disablePadding>
@@ -336,7 +279,6 @@ export default function Layout() {
             </ListItem>
           ))}
         </List>
-
         {favorites.length > 0 && (
           <>
             <Divider />
@@ -371,6 +313,36 @@ export default function Layout() {
             </List>
           </>
         )}
+        {/* User profile section at bottom of sidebar */}
+        <Box sx={{ mt: "auto" }}>
+          <Divider />
+          <Box sx={{ p: 2 }}>
+            <Box display="flex" alignItems="center" gap={2} mb={1}>
+              <Avatar sx={{ width: 40, height: 40, bgcolor: "primary.dark" }}>
+                {user?.email.charAt(0).toUpperCase()}
+              </Avatar>
+              <Box>
+                <Typography variant="body2" fontWeight="medium">
+                  {user?.email}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Role: {userRole || "User"}
+                </Typography>
+              </Box>
+            </Box>
+            <Button
+              variant="outlined"
+              color="inherit"
+              size="small"
+              fullWidth
+              startIcon={<LogoutIcon />}
+              onClick={handleSignOut}
+              sx={{ mt: 1 }}
+            >
+              Sign Out
+            </Button>
+          </Box>
+        </Box>
       </Drawer>
 
       <Main open={open}>

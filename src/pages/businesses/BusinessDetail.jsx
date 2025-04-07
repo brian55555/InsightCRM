@@ -285,15 +285,15 @@ export default function BusinessDetail() {
           variant="scrollable"
           scrollButtons="auto"
         >
-          <Tab icon={<ContactsIcon />} label="Contacts" />
-          <Tab icon={<AssignmentIcon />} label="Tasks" />
-          <Tab icon={<DescriptionIcon />} label="Documents" />
           <Tab icon={<NoteIcon />} label="Notes" />
+          <Tab icon={<AssignmentIcon />} label="Tasks" />
+          <Tab icon={<ContactsIcon />} label="Contacts" />
+          <Tab icon={<DescriptionIcon />} label="Documents" />
         </Tabs>
 
         {/* Tab Panels */}
         <TabPanel value={tabValue} index={0}>
-          <ContactsList businessId={id} />
+          <NotesList businessId={id} />
         </TabPanel>
 
         <TabPanel value={tabValue} index={1}>
@@ -301,11 +301,11 @@ export default function BusinessDetail() {
         </TabPanel>
 
         <TabPanel value={tabValue} index={2}>
-          <DocumentsList businessId={id} />
+          <ContactsList businessId={id} />
         </TabPanel>
 
         <TabPanel value={tabValue} index={3}>
-          <NotesList businessId={id} />
+          <DocumentsList businessId={id} />
         </TabPanel>
       </Paper>
     </Box>

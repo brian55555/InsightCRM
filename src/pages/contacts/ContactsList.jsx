@@ -3,30 +3,27 @@ import React, { useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Typography from "@mui/material/Typography";
-import Card from "@mui/material/Card";
-import CardContent from "@mui/material/CardContent";
-import CardMedia from "@mui/material/CardMedia";
 import Grid from "@mui/material/Grid";
-import IconButton from "@mui/material/IconButton";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogTitle from "@mui/material/DialogTitle";
 import TextField from "@mui/material/TextField";
 import MenuItem from "@mui/material/MenuItem";
-import Divider from "@mui/material/Divider";
 import AddIcon from "@mui/icons-material/Add";
-import EditIcon from "@mui/icons-material/Edit";
-import DeleteIcon from "@mui/icons-material/Delete";
-import EmailIcon from "@mui/icons-material/Email";
-import PhoneIcon from "@mui/icons-material/Phone";
-import BusinessIcon from "@mui/icons-material/Business";
 import ContactsIcon from "@mui/icons-material/Contacts";
 import Dropzone from "react-dropzone";
 import supabase from "../../supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import ContactCard from "../../components/contacts/ContactCard";
+import ContactListItem from "../../components/contacts/ContactListItem";
 
-export default function ContactsList({ businessId }) {
+export default function ContactsList({
+  businessId,
+  viewMode = "gallery",
+  searchQuery = "",
+  filterBusiness = "all",
+}) {
   const { user } = useAuth();
   const [contacts, setContacts] = useState([]);
   const [businesses, setBusinesses] = useState([]);
@@ -310,9 +307,7 @@ export default function ContactsList({ businessId }) {
         alignItems="center"
         mb={3}
       >
-        <Typography variant="h5">
-          {businessId ? "Business Contacts" : "All Contacts"}
-        </Typography>
+        <Typography variant="h5">{businessId ? "" : "All Contacts"}</Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -327,96 +322,79 @@ export default function ContactsList({ businessId }) {
       ) : contacts.length === 0 ? (
         <Typography>No contacts found</Typography>
       ) : (
-        <Grid container spacing={3}>
-          {contacts.map((contact) => (
-            <Grid item xs={12} sm={6} md={4} key={contact.id}>
-              <Card
-                sx={{
-                  height: "100%",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                {contact.business_card_url && (
-                  <CardMedia
-                    component="img"
-                    height="140"
-                    image={contact.business_card_url}
-                    alt={`${contact.name}'s business card`}
-                    sx={{ objectFit: "contain", bgcolor: "#f5f5f5" }}
-                  />
+        <>
+          {(() => {
+            // Filter contacts based on search query and business filter
+            let filteredContacts = [...contacts];
+
+            // Apply search filter
+            if (searchQuery) {
+              const query = searchQuery.toLowerCase();
+              filteredContacts = filteredContacts.filter(
+                (contact) =>
+                  contact.name?.toLowerCase().includes(query) ||
+                  contact.email?.toLowerCase().includes(query) ||
+                  contact.phone?.toLowerCase().includes(query) ||
+                  contact.title?.toLowerCase().includes(query) ||
+                  contact.notes?.toLowerCase().includes(query),
+              );
+            }
+
+            // Apply business filter
+            if (filterBusiness !== "all") {
+              if (filterBusiness === "no-business") {
+                filteredContacts = filteredContacts.filter(
+                  (contact) => !contact.business_id,
+                );
+              } else if (filterBusiness === "recent") {
+                // Sort by created_at date, most recent first
+                filteredContacts.sort(
+                  (a, b) => new Date(b.created_at) - new Date(a.created_at),
+                );
+                // Take only the 10 most recent
+                filteredContacts = filteredContacts.slice(0, 10);
+              }
+            }
+
+            // Return appropriate view based on viewMode
+            return viewMode === "gallery" ? (
+              <Grid container spacing={3}>
+                {filteredContacts.length === 0 ? (
+                  <Grid item xs={12}>
+                    <Typography>No contacts match your filters</Typography>
+                  </Grid>
+                ) : (
+                  filteredContacts.map((contact) => (
+                    <Grid item xs={12} sm={6} md={4} key={contact.id}>
+                      <ContactCard
+                        contact={contact}
+                        businessId={businessId}
+                        onEdit={handleDialogOpen}
+                        onDelete={handleDeleteDialogOpen}
+                      />
+                    </Grid>
+                  ))
                 )}
-                <CardContent sx={{ flexGrow: 1 }}>
-                  <Box
-                    display="flex"
-                    justifyContent="space-between"
-                    alignItems="flex-start"
-                  >
-                    <Box>
-                      <Typography variant="h6" component="h2">
-                        {contact.name}
-                      </Typography>
-                      {contact.title && (
-                        <Typography variant="body2" color="text.secondary">
-                          {contact.title}
-                        </Typography>
-                      )}
-                    </Box>
-                    <Box>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDialogOpen(contact)}
-                      >
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => handleDeleteDialogOpen(contact)}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-
-                  <Divider sx={{ my: 1.5 }} />
-
-                  {!businessId && contact.businesses && (
-                    <Box display="flex" alignItems="center" gap={1} mb={1}>
-                      <BusinessIcon fontSize="small" color="action" />
-                      <Typography variant="body2">
-                        {contact.businesses.name}
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {contact.email && (
-                    <Box display="flex" alignItems="center" gap={1} mb={1}>
-                      <EmailIcon fontSize="small" color="action" />
-                      <Typography variant="body2">
-                        <a href={`mailto:${contact.email}`}>{contact.email}</a>
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {contact.phone && (
-                    <Box display="flex" alignItems="center" gap={1} mb={1}>
-                      <PhoneIcon fontSize="small" color="action" />
-                      <Typography variant="body2">
-                        <a href={`tel:${contact.phone}`}>{contact.phone}</a>
-                      </Typography>
-                    </Box>
-                  )}
-
-                  {contact.notes && (
-                    <Typography variant="body2" sx={{ mt: 1 }}>
-                      {contact.notes}
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
+              </Grid>
+            ) : (
+              <Box>
+                {filteredContacts.length === 0 ? (
+                  <Typography>No contacts match your filters</Typography>
+                ) : (
+                  filteredContacts.map((contact) => (
+                    <ContactListItem
+                      key={contact.id}
+                      contact={contact}
+                      businessId={businessId}
+                      onEdit={handleDialogOpen}
+                      onDelete={handleDeleteDialogOpen}
+                    />
+                  ))
+                )}
+              </Box>
+            );
+          })()}
+        </>
       )}
 
       {/* Add/Edit Contact Dialog */}

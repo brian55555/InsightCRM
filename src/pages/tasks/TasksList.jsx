@@ -36,7 +36,7 @@ import { useAuth } from "../../contexts/AuthContext";
 // Task status options
 const STATUS_OPTIONS = ["Pending", "In Progress", "Completed"];
 
-export default function TasksList({ businessId }) {
+export default function TasksList({ businessId, filters }) {
   const { user } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [businesses, setBusinesses] = useState([]);
@@ -62,7 +62,7 @@ export default function TasksList({ businessId }) {
       fetchBusinesses();
     }
     fetchUsers();
-  }, [businessId, page, rowsPerPage]);
+  }, [businessId, page, rowsPerPage, filters]); // Added filters dependency
 
   const fetchTasks = async () => {
     try {
@@ -81,6 +81,37 @@ export default function TasksList({ businessId }) {
       // Add filters if necessary
       if (businessId) {
         query = query.eq("business_id", businessId);
+      }
+
+      // Apply filters from props if they exist
+      if (filters) {
+        // Search term filter
+        if (filters.searchTerm) {
+          query = query.ilike("title", `%${filters.searchTerm}%`);
+        }
+
+        // Status filter
+        if (filters.status && filters.status !== "All") {
+          query = query.eq("status", filters.status);
+        }
+
+        // Due date filter
+        if (filters.dueDate) {
+          const startOfDay = new Date(filters.dueDate);
+          startOfDay.setHours(0, 0, 0, 0);
+
+          const endOfDay = new Date(filters.dueDate);
+          endOfDay.setHours(23, 59, 59, 999);
+
+          query = query
+            .gte("due_date", startOfDay.toISOString())
+            .lte("due_date", endOfDay.toISOString());
+        }
+
+        // Assigned to filter
+        if (filters.assignedTo) {
+          query = query.eq("assigned_to", filters.assignedTo);
+        }
       }
 
       // Add pagination
@@ -344,9 +375,7 @@ export default function TasksList({ businessId }) {
         alignItems="center"
         mb={3}
       >
-        <Typography variant="h5">
-          {businessId ? "Business Tasks" : "All Tasks"}
-        </Typography>
+        <Typography variant="h5">{businessId ? "" : "All Tasks"}</Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
