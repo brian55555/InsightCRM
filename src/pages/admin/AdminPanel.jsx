@@ -49,7 +49,7 @@ export default function AdminPanel() {
           variant="fullWidth"
         >
           <Tab label="User Management" />
-          <Tab label="Google Drive Integration" />
+          <Tab label="Dropbox Integration" />
           <Tab label="System Logs" />
         </Tabs>
       </Paper>

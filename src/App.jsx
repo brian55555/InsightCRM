@@ -11,6 +11,9 @@ import Register from "./pages/auth/Register";
 import ResetPassword from "./pages/auth/ResetPassword";
 import PendingApproval from "./pages/auth/PendingApproval";
 
+// OAuth Callback
+import OAuthCallback from "./pages/admin/OAuthCallback";
+
 // App Pages
 import Dashboard from "./pages/Dashboard";
 import Businesses from "./pages/businesses/Businesses.jsx";
@@ -53,6 +56,7 @@ function App() {
           user && !isApproved ? <PendingApproval /> : <Navigate to="/" />
         }
       />
+      <Route path="/admin/oauth-callback" element={<OAuthCallback />} />
 
       {/* App Routes - Protected by authentication */}
       <Route

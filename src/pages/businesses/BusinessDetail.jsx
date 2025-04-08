@@ -67,11 +67,18 @@ export default function BusinessDetail() {
   const [loading, setLoading] = useState(true);
   const [tabValue, setTabValue] = useState(0);
   const [isFavorite, setIsFavorite] = useState(false);
+  const [pointOfContact, setPointOfContact] = useState(null);
 
   useEffect(() => {
     fetchBusiness();
     checkFavorite();
   }, [id]);
+
+  useEffect(() => {
+    if (business?.point_of_contact_id) {
+      fetchPointOfContact(business.point_of_contact_id);
+    }
+  }, [business?.point_of_contact_id]);
 
   const fetchBusiness = async () => {
     try {
@@ -90,6 +97,22 @@ export default function BusinessDetail() {
       navigate("/businesses");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPointOfContact = async (contactId) => {
+    try {
+      const { data, error } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("id", contactId)
+        .single();
+
+      if (error) throw error;
+      setPointOfContact(data);
+    } catch (error) {
+      console.error("Error fetching point of contact:", error);
+      setPointOfContact(null);
     }
   };
 
@@ -223,7 +246,11 @@ export default function BusinessDetail() {
           <Button
             variant="outlined"
             startIcon={<EditIcon />}
-            onClick={() => navigate(`/businesses?edit=${business.id}`)}
+            onClick={() =>
+              navigate(`/businesses`, {
+                state: { openEditDialog: true, businessToEdit: business },
+              })
+            }
           >
             Edit
           </Button>
@@ -247,9 +274,48 @@ export default function BusinessDetail() {
             </Typography>
 
             <Box display="flex" flexDirection="column" gap={1}>
+              {business.industry && (
+                <Box display="flex" alignItems="center" gap={1}>
+                  <BusinessIcon color="action" fontSize="small" />
+                  <Typography variant="body2">
+                    <strong>Industry:</strong> {business.industry}
+                  </Typography>
+                </Box>
+              )}
+
+              {business.revenue && (
+                <Box display="flex" alignItems="center" gap={1}>
+                  <BusinessIcon color="action" fontSize="small" />
+                  <Typography variant="body2">
+                    <strong>Annual Revenue:</strong> $
+                    {business.revenue.toLocaleString()}
+                  </Typography>
+                </Box>
+              )}
+
+              {business.year_founded && (
+                <Box display="flex" alignItems="center" gap={1}>
+                  <BusinessIcon color="action" fontSize="small" />
+                  <Typography variant="body2">
+                    <strong>Year Founded:</strong> {business.year_founded}
+                  </Typography>
+                </Box>
+              )}
+
+              {business.num_employees && (
+                <Box display="flex" alignItems="center" gap={1}>
+                  <BusinessIcon color="action" fontSize="small" />
+                  <Typography variant="body2">
+                    <strong>Employees:</strong>{" "}
+                    {business.num_employees.toLocaleString()}
+                  </Typography>
+                </Box>
+              )}
+
               <Box display="flex" alignItems="center" gap={1}>
                 <BusinessIcon color="action" fontSize="small" />
                 <Typography variant="body2">
+                  <strong>Address:</strong>{" "}
                   {business.address || "No address available"}
                 </Typography>
               </Box>
@@ -258,6 +324,7 @@ export default function BusinessDetail() {
                 <Box display="flex" alignItems="center" gap={1}>
                   <DescriptionIcon color="action" fontSize="small" />
                   <Typography variant="body2">
+                    <strong>Website:</strong>{" "}
                     <a
                       href={
                         business.website.startsWith("http")
@@ -270,6 +337,60 @@ export default function BusinessDetail() {
                       {business.website}
                     </a>
                   </Typography>
+                </Box>
+              )}
+
+              {pointOfContact && (
+                <Box sx={{ mt: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    <strong>Point of Contact</strong>
+                  </Typography>
+                  <Card variant="outlined" sx={{ mt: 1 }}>
+                    <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
+                      <Box display="flex" alignItems="center" gap={2}>
+                        <Avatar sx={{ bgcolor: "primary.main" }}>
+                          {pointOfContact.name.charAt(0).toUpperCase()}
+                        </Avatar>
+                        <Box>
+                          <Typography variant="subtitle2">
+                            {pointOfContact.name}
+                          </Typography>
+                          {pointOfContact.title && (
+                            <Typography variant="body2" color="text.secondary">
+                              {pointOfContact.title}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                      <Box sx={{ mt: 1 }}>
+                        {pointOfContact.email && (
+                          <Box
+                            display="flex"
+                            alignItems="center"
+                            gap={1}
+                            mb={0.5}
+                          >
+                            <EmailIcon fontSize="small" color="action" />
+                            <Typography variant="body2">
+                              <a href={`mailto:${pointOfContact.email}`}>
+                                {pointOfContact.email}
+                              </a>
+                            </Typography>
+                          </Box>
+                        )}
+                        {pointOfContact.phone && (
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <PhoneIcon fontSize="small" color="action" />
+                            <Typography variant="body2">
+                              <a href={`tel:${pointOfContact.phone}`}>
+                                {pointOfContact.phone}
+                              </a>
+                            </Typography>
+                          </Box>
+                        )}
+                      </Box>
+                    </CardContent>
+                  </Card>
                 </Box>
               )}
             </Box>
@@ -285,10 +406,10 @@ export default function BusinessDetail() {
           variant="scrollable"
           scrollButtons="auto"
         >
-          <Tab icon={<NoteIcon />} label="Notes" />
-          <Tab icon={<AssignmentIcon />} label="Tasks" />
-          <Tab icon={<ContactsIcon />} label="Contacts" />
-          <Tab icon={<DescriptionIcon />} label="Documents" />
+          <Tab label="Notes" />
+          <Tab label="Tasks" />
+          <Tab label="Contacts" />
+          <Tab label="Documents" />
         </Tabs>
 
         {/* Tab Panels */}

@@ -1,6 +1,6 @@
 // Businesses Page (pages/businesses/Businesses.jsx)
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
 import Button from "@mui/material/Button";
@@ -42,6 +42,7 @@ const STATUS_OPTIONS = [
 export default function Businesses() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const location = useLocation();
 
   // State for business data
   const [businesses, setBusinesses] = useState([]);
@@ -64,7 +65,15 @@ export default function Businesses() {
     status: "Researching",
     address: "",
     website: "",
+    revenue: "",
+    year_founded: "",
+    num_employees: "",
+    industry: "",
+    point_of_contact_id: null,
   });
+
+  // State for contacts
+  const [contacts, setContacts] = useState([]);
 
   // State for favorites
   const [favorites, setFavorites] = useState([]);
@@ -73,6 +82,22 @@ export default function Businesses() {
     fetchBusinesses();
     fetchFavorites();
   }, [page, rowsPerPage, searchTerm, statusFilter]);
+
+  // Fetch contacts when dialog opens
+  useEffect(() => {
+    if (dialogOpen && currentBusiness.id) {
+      fetchContactsForBusiness(currentBusiness.id);
+    }
+  }, [dialogOpen, currentBusiness.id]);
+
+  // Handle direct edit from BusinessDetail page
+  useEffect(() => {
+    if (location.state?.openEditDialog && location.state?.businessToEdit) {
+      handleDialogOpen(location.state.businessToEdit);
+      // Clear the state to prevent reopening on navigation
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location]);
 
   const fetchBusinesses = async () => {
     try {
@@ -158,9 +183,15 @@ export default function Businesses() {
         status: "Researching",
         address: "",
         website: "",
+        revenue: "",
+        year_founded: "",
+        num_employees: "",
+        industry: "",
+        point_of_contact_id: null,
       });
     }
     setDialogOpen(true);
+    fetchAllContacts();
   };
 
   const handleDialogClose = () => {
@@ -189,6 +220,15 @@ export default function Businesses() {
             status: currentBusiness.status,
             address: currentBusiness.address,
             website: currentBusiness.website,
+            revenue: currentBusiness.revenue || null,
+            year_founded: currentBusiness.year_founded
+              ? parseInt(currentBusiness.year_founded)
+              : null,
+            num_employees: currentBusiness.num_employees
+              ? parseInt(currentBusiness.num_employees)
+              : null,
+            industry: currentBusiness.industry || null,
+            point_of_contact_id: currentBusiness.point_of_contact_id || null,
             updated_at: new Date(),
           })
           .eq("id", currentBusiness.id);
@@ -220,6 +260,15 @@ export default function Businesses() {
               status: currentBusiness.status,
               address: currentBusiness.address,
               website: currentBusiness.website,
+              revenue: currentBusiness.revenue || null,
+              year_founded: currentBusiness.year_founded
+                ? parseInt(currentBusiness.year_founded)
+                : null,
+              num_employees: currentBusiness.num_employees
+                ? parseInt(currentBusiness.num_employees)
+                : null,
+              industry: currentBusiness.industry || null,
+              point_of_contact_id: currentBusiness.point_of_contact_id || null,
               created_at: new Date(),
               updated_at: new Date(),
             },
@@ -284,6 +333,35 @@ export default function Businesses() {
       }
     } catch (error) {
       console.error("Error toggling favorite:", error);
+    }
+  };
+
+  const fetchAllContacts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("contacts")
+        .select("id, name, title, email, phone")
+        .order("name");
+
+      if (error) throw error;
+      setContacts(data || []);
+    } catch (error) {
+      console.error("Error fetching contacts:", error);
+    }
+  };
+
+  const fetchContactsForBusiness = async (businessId) => {
+    try {
+      const { data, error } = await supabase
+        .from("contacts")
+        .select("id, name, title, email, phone")
+        .eq("business_id", businessId)
+        .order("name");
+
+      if (error) throw error;
+      setContacts(data || []);
+    } catch (error) {
+      console.error("Error fetching contacts for business:", error);
     }
   };
 
@@ -506,6 +584,54 @@ export default function Businesses() {
                 </MenuItem>
               ))}
             </TextField>
+            <Box sx={{ display: "flex", gap: 2 }}>
+              <TextField
+                margin="normal"
+                fullWidth
+                name="industry"
+                label="Industry"
+                value={currentBusiness.industry || ""}
+                onChange={handleInputChange}
+              />
+              <TextField
+                margin="normal"
+                fullWidth
+                name="revenue"
+                label="Annual Revenue"
+                type="number"
+                InputProps={{
+                  startAdornment: (
+                    <Box component="span" sx={{ mr: 1 }}>
+                      $
+                    </Box>
+                  ),
+                }}
+                value={currentBusiness.revenue || ""}
+                onChange={handleInputChange}
+              />
+            </Box>
+            <Box sx={{ display: "flex", gap: 2 }}>
+              <TextField
+                margin="normal"
+                fullWidth
+                name="year_founded"
+                label="Year Founded"
+                type="number"
+                value={currentBusiness.year_founded || ""}
+                onChange={handleInputChange}
+                inputProps={{ min: 1800, max: new Date().getFullYear() }}
+              />
+              <TextField
+                margin="normal"
+                fullWidth
+                name="num_employees"
+                label="Number of Employees"
+                type="number"
+                value={currentBusiness.num_employees || ""}
+                onChange={handleInputChange}
+                inputProps={{ min: 1 }}
+              />
+            </Box>
             <TextField
               margin="normal"
               fullWidth
@@ -522,6 +648,22 @@ export default function Businesses() {
               value={currentBusiness.website || ""}
               onChange={handleInputChange}
             />
+            <TextField
+              margin="normal"
+              select
+              fullWidth
+              name="point_of_contact_id"
+              label="Point of Contact"
+              value={currentBusiness.point_of_contact_id || ""}
+              onChange={handleInputChange}
+            >
+              <MenuItem value="">None</MenuItem>
+              {contacts.map((contact) => (
+                <MenuItem key={contact.id} value={contact.id}>
+                  {contact.name} {contact.title ? `(${contact.title})` : ""}
+                </MenuItem>
+              ))}
+            </TextField>
           </Box>
         </DialogContent>
         <DialogActions>

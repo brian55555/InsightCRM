@@ -1,4 +1,4 @@
-// Google Drive Integration Component (pages/admin/DriveIntegration.jsx)
+// Dropbox Integration Component (pages/admin/DriveIntegration.jsx)
 import React, { useState, useEffect } from "react";
 import Box from "@mui/material/Box";
 import Paper from "@mui/material/Paper";
@@ -13,20 +13,21 @@ import CloudUploadIcon from "@mui/icons-material/CloudUpload";
 import CloudOffIcon from "@mui/icons-material/CloudOff";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SaveIcon from "@mui/icons-material/Save";
+import DropboxIcon from "@mui/icons-material/CloudCircle";
 import supabase from "../../supabase";
 import { useAuth } from "../../contexts/AuthContext";
 
-export default function DriveIntegration() {
+export default function DropboxIntegration() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [testingConnection, setTestingConnection] = useState(false);
   const [saveInProgress, setSaveInProgress] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [settings, setSettings] = useState({
-    client_id: "",
-    client_secret: "",
-    refresh_token: "",
-    root_folder_id: "",
+    app_key: "",
+    app_secret: "",
+    access_token: "",
+    root_folder_path: "",
     is_configured: false,
   });
 
@@ -44,7 +45,7 @@ export default function DriveIntegration() {
       const { data, error } = await supabase
         .from("system_settings")
         .select("*")
-        .eq("key", "google_drive_settings")
+        .eq("key", "dropbox_settings")
         .single();
 
       if (error) {
@@ -65,7 +66,7 @@ export default function DriveIntegration() {
         setConnectionStatus(data.value.is_configured ? "connected" : null);
       }
     } catch (error) {
-      console.error("Error fetching Google Drive settings:", error);
+      console.error("Error fetching Dropbox settings:", error);
     } finally {
       setLoading(false);
     }
@@ -83,29 +84,47 @@ export default function DriveIntegration() {
     try {
       setSaveInProgress(true);
 
-      // Update settings in the database
+      // Validate required fields
+      if (!settings.app_key || !settings.app_secret || !settings.access_token) {
+        throw new Error("App Key, App Secret, and Access Token are required");
+      }
+
+      console.log("Saving Dropbox settings...");
+
+      // Skip the connection test for now and just save the settings
+      const updatedSettings = {
+        ...settings,
+        is_configured: true,
+        last_updated: new Date().toISOString(),
+      };
+
+      console.log("Updating system_settings table...");
       const { error } = await supabase.from("system_settings").upsert({
-        key: "google_drive_settings",
-        value: settings,
+        key: "dropbox_settings",
+        value: updatedSettings,
         updated_by: user.id,
         updated_at: new Date(),
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error updating system_settings:", error);
+        throw error;
+      }
 
+      console.log("Logging change...");
       // Log the change
       await supabase.from("change_logs").insert([
         {
           table_name: "system_settings",
-          record_id: "google_drive_settings",
+          record_id: "dropbox_settings",
           field_name: "value",
           old_value: JSON.stringify({
             ...settings,
-            client_secret: "[REDACTED]",
+            app_secret: "[REDACTED]",
           }),
           new_value: JSON.stringify({
-            ...settings,
-            client_secret: "[REDACTED]",
+            ...updatedSettings,
+            app_secret: "[REDACTED]",
           }),
           changed_by: user.id,
           changed_at: new Date(),
@@ -113,43 +132,189 @@ export default function DriveIntegration() {
       ]);
 
       // Update UI state
-      setSettings({
-        ...settings,
-        is_configured: true,
-      });
+      setSettings(updatedSettings);
       setConnectionStatus("connected");
+      alert(
+        "Dropbox settings saved successfully! You can now test the connection.",
+      );
     } catch (error) {
-      console.error("Error saving Google Drive settings:", error);
-      alert("Error saving settings. Please try again.");
+      console.error("Error saving Dropbox settings:", error);
+      setConnectionStatus("error");
+      alert(
+        `Error saving settings: ${error.message || "An unexpected error occurred"}`,
+      );
     } finally {
       setSaveInProgress(false);
     }
+  };
+
+  const initiateOAuthFlow = () => {
+    // Import the OAuth utility
+    import("../../utils/oauth.js").then(
+      ({ generateAuthUrl, generateState }) => {
+        // Generate a random state parameter to prevent CSRF attacks
+        const state = generateState();
+
+        // Store the state in sessionStorage to verify when the user returns
+        sessionStorage.setItem("oauth_state", state);
+
+        // Define the redirect URI - must match what's configured in Google Cloud Console
+        const redirectUri = `${window.location.origin}/admin/oauth-callback`;
+
+        // Define the scopes needed for Google Drive access
+        const scope = "https://www.googleapis.com/auth/drive.file";
+
+        // Generate the authorization URL
+        const authUrl = generateAuthUrl(
+          settings.client_id,
+          redirectUri,
+          scope,
+          state,
+        );
+
+        // Redirect the user to the authorization URL
+        window.location.href = authUrl;
+      },
+    );
   };
 
   const testConnection = async () => {
     try {
       setTestingConnection(true);
 
-      // In a real implementation, you would test the connection to Google Drive
-      // This is a mock implementation that simulates a successful test
-
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      // Set connection status based on whether all required fields are filled
-      if (
-        settings.client_id &&
-        settings.client_secret &&
-        settings.refresh_token &&
-        settings.root_folder_id
-      ) {
-        setConnectionStatus("connected");
-      } else {
+      // Check if all required fields are filled
+      if (!settings.app_key || !settings.app_secret || !settings.access_token) {
         setConnectionStatus("error");
+        throw new Error("App Key, App Secret, and Access Token are required");
+      }
+
+      console.log("Testing Dropbox connection...");
+
+      // First, test direct Dropbox API access without the Edge Function
+      try {
+        // Try a direct test to Dropbox API to check if credentials are valid
+        // Note: This endpoint doesn't expect a body or Content-Type header
+        const response = await fetch(
+          "https://api.dropboxapi.com/2/users/get_current_account",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${settings.access_token}`,
+            },
+          },
+        );
+
+        if (response.ok) {
+          console.log("Direct Dropbox API test successful");
+          const accountData = await response.json();
+          console.log("Account data:", accountData);
+
+          // If direct test works but Edge Function fails, we know it's an Edge Function issue
+          try {
+            // Call Supabase Edge Function to test Dropbox connection
+            const { data, error } = await supabase.functions.invoke(
+              "test-dropbox-connection",
+              {
+                body: {
+                  app_key: settings.app_key,
+                  app_secret: settings.app_secret,
+                  access_token: settings.access_token,
+                  root_folder_path: settings.root_folder_path || "/",
+                },
+              },
+            );
+
+            console.log("Edge function response:", { data, error });
+
+            if (error) {
+              console.error("Edge function error:", error);
+              // If direct test worked but Edge Function failed, still mark as connected
+              setConnectionStatus("connected");
+              alert(
+                "Connection to Dropbox is working, but the Edge Function test failed. Your credentials are valid, but there may be an issue with the Edge Function deployment.",
+              );
+              return;
+            }
+
+            if (data && data.success) {
+              setConnectionStatus("connected");
+              alert("Connection successful! Dropbox is properly configured.");
+            } else {
+              setConnectionStatus("error");
+              throw new Error(data?.message || "Unknown error");
+            }
+          } catch (edgeFunctionError) {
+            console.error("Edge function execution error:", edgeFunctionError);
+            // If direct test worked but Edge Function failed, still mark as connected
+            setConnectionStatus("connected");
+            alert(
+              "Connection to Dropbox is working, but the Edge Function test failed. Your credentials are valid, but there may be an issue with the Edge Function deployment.",
+            );
+          }
+        } else {
+          let errorMessage = "Direct Dropbox API test failed";
+          try {
+            const errorData = await response.json();
+            console.error("Direct Dropbox API test failed:", errorData);
+            errorMessage = `${errorMessage}: ${errorData.error_summary || JSON.stringify(errorData)}`;
+          } catch (jsonError) {
+            // If not JSON, try to get as text
+            try {
+              const errorText = await response.text();
+              console.error("Direct Dropbox API test failed:", errorText);
+              errorMessage = `${errorMessage}: ${errorText}`;
+            } catch (textError) {
+              console.error("Could not parse error response", textError);
+              errorMessage = `${errorMessage}: Status ${response.status}`;
+            }
+          }
+          throw new Error(errorMessage);
+        }
+      } catch (directTestError) {
+        console.error("Error in direct Dropbox API test:", directTestError);
+
+        // If direct test fails, try the Edge Function as a fallback
+        try {
+          const { data, error } = await supabase.functions.invoke(
+            "test-dropbox-connection",
+            {
+              body: {
+                app_key: settings.app_key,
+                app_secret: settings.app_secret,
+                access_token: settings.access_token,
+                root_folder_path: settings.root_folder_path || "/",
+              },
+            },
+          );
+
+          if (error) {
+            console.error("Edge function error:", error);
+            throw error;
+          }
+
+          if (data && data.success) {
+            setConnectionStatus("connected");
+            alert("Connection successful! Dropbox is properly configured.");
+          } else {
+            setConnectionStatus("error");
+            throw new Error(data?.message || "Unknown error");
+          }
+        } catch (edgeFunctionError) {
+          console.error(
+            "Both direct test and Edge Function failed:",
+            edgeFunctionError,
+          );
+          throw new Error(
+            "Failed to connect to Dropbox using both direct API and Edge Function. Please check your credentials.",
+          );
+        }
       }
     } catch (error) {
-      console.error("Error testing Google Drive connection:", error);
+      console.error("Error testing Dropbox connection:", error);
       setConnectionStatus("error");
+      alert(
+        `Connection error: ${error.message || "Failed to connect to Dropbox. Please check your credentials and try again."}`,
+      );
     } finally {
       setTestingConnection(false);
     }
@@ -166,7 +331,7 @@ export default function DriveIntegration() {
   return (
     <Box>
       <Typography variant="h5" component="h2" gutterBottom>
-        Google Drive Integration
+        Dropbox Integration
       </Typography>
 
       <Paper sx={{ p: 3, mb: 3 }}>
@@ -178,9 +343,7 @@ export default function DriveIntegration() {
           {connectionStatus === "connected" ? (
             <>
               <CloudDoneIcon color="success" sx={{ mr: 1 }} />
-              <Typography color="success.main">
-                Connected to Google Drive
-              </Typography>
+              <Typography color="success.main">Connected to Dropbox</Typography>
             </>
           ) : connectionStatus === "error" ? (
             <>
@@ -208,18 +371,46 @@ export default function DriveIntegration() {
         </Box>
 
         <Alert severity="info" sx={{ mb: 3 }}>
-          To integrate with Google Drive, you need to create a project in the
-          Google Cloud Console, enable the Google Drive API, and create OAuth
-          credentials. Please refer to the
+          To integrate with Dropbox, you need to create an app in the Dropbox
+          Developer Console and generate an access token. Please refer to the
           <a
-            href="https://developers.google.com/drive/api/v3/quickstart/nodejs"
+            href="https://www.dropbox.com/developers/documentation/http/overview"
             target="_blank"
             rel="noopener noreferrer"
             style={{ marginLeft: 4 }}
           >
-            Google Drive API documentation
+            Dropbox API documentation
           </a>{" "}
           for more details.
+          <br />
+          <br />
+          <strong>Important:</strong> Make sure to:
+          <ul>
+            <li>
+              Create a Dropbox app in the{" "}
+              <a
+                href="https://www.dropbox.com/developers/apps"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Dropbox App Console
+              </a>
+            </li>
+            <li>Choose "Scoped access" for your app type</li>
+            <li>
+              Select "Full Dropbox" access (or create a dedicated folder for
+              this app)
+            </li>
+            <li>
+              Generate an access token with the required permissions
+              (files.content.read, files.content.write, files.metadata.read,
+              files.metadata.write)
+            </li>
+            <li>
+              Copy your App key, App secret, and Access token to the fields
+              below
+            </li>
+          </ul>
         </Alert>
 
         <Divider sx={{ my: 3 }} />
@@ -229,9 +420,9 @@ export default function DriveIntegration() {
             margin="normal"
             required
             fullWidth
-            name="client_id"
-            label="OAuth Client ID"
-            value={settings.client_id || ""}
+            name="app_key"
+            label="Dropbox App Key"
+            value={settings.app_key || ""}
             onChange={handleInputChange}
           />
 
@@ -239,10 +430,10 @@ export default function DriveIntegration() {
             margin="normal"
             required
             fullWidth
-            name="client_secret"
-            label="OAuth Client Secret"
+            name="app_secret"
+            label="Dropbox App Secret"
             type="password"
-            value={settings.client_secret || ""}
+            value={settings.app_secret || ""}
             onChange={handleInputChange}
           />
 
@@ -250,9 +441,9 @@ export default function DriveIntegration() {
             margin="normal"
             required
             fullWidth
-            name="refresh_token"
-            label="Refresh Token"
-            value={settings.refresh_token || ""}
+            name="access_token"
+            label="Access Token"
+            value={settings.access_token || ""}
             onChange={handleInputChange}
           />
 
@@ -260,10 +451,10 @@ export default function DriveIntegration() {
             margin="normal"
             required
             fullWidth
-            name="root_folder_id"
-            label="Root Folder ID"
-            helperText="The ID of the Google Drive folder where all documents will be stored"
-            value={settings.root_folder_id || ""}
+            name="root_folder_path"
+            label="Root Folder Path"
+            helperText="The path of the Dropbox folder where all documents will be stored (e.g., /InsightCRM or leave empty for root)"
+            value={settings.root_folder_path || ""}
             onChange={handleInputChange}
           />
 

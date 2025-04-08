@@ -28,6 +28,7 @@ import CardActions from "@mui/material/CardActions";
 import Collapse from "@mui/material/Collapse";
 import Menu from "@mui/material/Menu";
 import CircularProgress from "@mui/material/CircularProgress";
+import LinearProgress from "@mui/material/LinearProgress";
 import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
 import ImageIcon from "@mui/icons-material/Image";
 import DescriptionIcon from "@mui/icons-material/Description";
@@ -49,6 +50,11 @@ import Dropzone from "react-dropzone";
 import { format } from "date-fns";
 import supabase from "../../supabase";
 import { useAuth } from "../../contexts/AuthContext";
+import {
+  uploadDocument,
+  createDocumentFolder,
+  deleteDocument,
+} from "../../utils/documentStorage";
 
 // Document categories
 const DOCUMENT_CATEGORIES = [
@@ -321,65 +327,35 @@ export default function DocumentsList({ businessId }) {
 
       setUploadProgress(10);
 
-      // Upload file to Supabase storage
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${Date.now()}.${fileExt}`;
-      const filePath = `documents${currentPath}${fileName}`;
+      // Upload document using the documentStorage utility
+      const result = await uploadDocument({
+        file,
+        name,
+        description,
+        category,
+        business_id,
+        path: currentPath,
+        userId: user.id,
+        progressCallback: (progress) => {
+          setUploadProgress(Math.round(progress * 0.7) + 10); // Scale to 10-80%
+        },
+      });
 
-      const { error: uploadError } = await supabase.storage
-        .from("business-documents")
-        .upload(filePath, file, {
-          cacheControl: "3600",
-          onUploadProgress: (progress) => {
-            setUploadProgress(
-              Math.round((progress.loaded / progress.total) * 50) + 10,
-            );
-          },
-        });
-
-      if (uploadError) throw uploadError;
-
-      setUploadProgress(70);
-
-      // Get the public URL
-      const { data } = supabase.storage
-        .from("business-documents")
-        .getPublicUrl(filePath);
-
-      const publicUrl = data.publicUrl;
-
-      // Create document record in database
-      const { data: docData, error: docError } = await supabase
-        .from("documents")
-        .insert([
-          {
-            name,
-            description,
-            category,
-            business_id,
-            type: fileExt,
-            path: currentPath,
-            google_drive_id: publicUrl, // Using this field to store the Supabase URL
-            created_by: user.id,
-            created_at: new Date(),
-            updated_at: new Date(),
-          },
-        ])
-        .select();
-
-      if (docError) throw docError;
+      if (!result.success) {
+        throw new Error(result.error || "Upload failed");
+      }
 
       setUploadProgress(90);
 
       // Log the creation
-      if (docData && docData[0]) {
+      if (result.document) {
         await supabase.from("change_logs").insert([
           {
             table_name: "documents",
-            record_id: docData[0].id,
+            record_id: result.document.id,
             field_name: "creation",
             old_value: null,
-            new_value: JSON.stringify(docData[0]),
+            new_value: JSON.stringify(result.document),
             changed_by: user.id,
             changed_at: new Date(),
           },
@@ -393,7 +369,49 @@ export default function DocumentsList({ businessId }) {
       handleUploadDialogClose();
     } catch (error) {
       console.error("Error uploading file:", error);
-      alert("Error uploading file. Please try again.");
+
+      // Provide more specific error messages based on the error
+      let errorMessage = "Error uploading file. ";
+
+      if (error.message) {
+        if (error.message.includes("Dropbox is not configured")) {
+          errorMessage =
+            "Dropbox is not properly configured. Please contact an administrator to set up the Dropbox integration.";
+        } else if (
+          error.message.includes("Network error") ||
+          error.message.includes("timed out")
+        ) {
+          errorMessage =
+            "Network error during upload. Please check your internet connection and try again.";
+        } else if (
+          error.message.includes("access_token") ||
+          error.message.includes("authorization") ||
+          error.message.includes("401")
+        ) {
+          errorMessage =
+            "Authorization error with Dropbox. The access token may have expired. Please contact an administrator.";
+        } else if (
+          error.message.includes("file size") ||
+          error.message.includes("too large")
+        ) {
+          errorMessage =
+            "The file is too large for upload. Please try a smaller file.";
+        } else if (
+          error.message.includes("path/not_found") ||
+          error.message.includes("path/restricted")
+        ) {
+          errorMessage =
+            "The folder path in Dropbox is not accessible. Please contact an administrator.";
+        } else {
+          // Include the actual error message for other cases
+          errorMessage += error.message;
+        }
+      } else {
+        errorMessage +=
+          "Please try again or contact support if the issue persists.";
+      }
+
+      alert(errorMessage);
       setUploadProgress(0);
     }
   };
@@ -405,37 +423,27 @@ export default function DocumentsList({ businessId }) {
         return;
       }
 
-      // In a real implementation, this would create a folder in Google Drive
-      // For our mock implementation, we'll create a document with a special type
+      // Create folder using the documentStorage utility
+      const result = await createDocumentFolder({
+        folderName,
+        currentPath,
+        business_id: businessId || businesses[0]?.id,
+        userId: user.id,
+      });
 
-      const newPath = `${currentPath}${folderName}/`;
-
-      const { data, error } = await supabase
-        .from("documents")
-        .insert([
-          {
-            name: folderName,
-            type: "folder",
-            path: currentPath,
-            business_id: businessId || businesses[0]?.id,
-            created_by: user.id,
-            created_at: new Date(),
-            updated_at: new Date(),
-          },
-        ])
-        .select();
-
-      if (error) throw error;
+      if (!result.success) {
+        throw new Error(result.error || "Folder creation failed");
+      }
 
       // Log the creation
-      if (data && data[0]) {
+      if (result.folder) {
         await supabase.from("change_logs").insert([
           {
             table_name: "documents",
-            record_id: data[0].id,
+            record_id: result.folder.id,
             field_name: "creation",
             old_value: null,
-            new_value: JSON.stringify(data[0]),
+            new_value: JSON.stringify(result.folder),
             changed_by: user.id,
             changed_at: new Date(),
           },
@@ -447,28 +455,65 @@ export default function DocumentsList({ businessId }) {
       handleCreateFolderDialogClose();
     } catch (error) {
       console.error("Error creating folder:", error);
-      alert("Error creating folder. Please try again.");
+
+      // Provide more specific error messages based on the error
+      let errorMessage = "Error creating folder: ";
+
+      if (error.message) {
+        if (error.message.includes("Dropbox is not configured")) {
+          errorMessage =
+            "Dropbox is not properly configured. Please contact an administrator to set up the Dropbox integration.";
+        } else if (error.message.includes("path/conflict")) {
+          errorMessage =
+            "A folder with this name already exists in this location. Please choose a different name.";
+        } else if (
+          error.message.includes("access_token") ||
+          error.message.includes("authorization") ||
+          error.message.includes("401")
+        ) {
+          errorMessage =
+            "Authorization error with Dropbox. The access token may have expired. Please contact an administrator.";
+        } else if (
+          error.message.includes("path/not_found") ||
+          error.message.includes("path/restricted")
+        ) {
+          errorMessage =
+            "The folder path in Dropbox is not accessible. Please contact an administrator.";
+        } else {
+          // Include the actual error message for other cases
+          errorMessage += error.message;
+        }
+      } else {
+        errorMessage +=
+          "Please try again or contact support if the issue persists.";
+      }
+
+      alert(errorMessage);
     }
   };
 
-  const deleteDocument = async () => {
+  const deleteDocumentItem = async () => {
     try {
       if (!selectedItem) return;
 
       if (selectedItem.isFolder) {
-        // In a real implementation, you would delete the folder and its contents in Google Drive
-        // For our mock implementation, we'll just refresh the list
+        // Delete folder using the documentStorage utility
+        // This will be implemented in a future update
+        // For now, we'll just refresh the list
         fetchDocuments();
         handleDeleteDialogClose();
         return;
       }
 
-      const { error } = await supabase
-        .from("documents")
-        .delete()
-        .eq("id", selectedItem.id);
+      // Delete document using the documentStorage utility
+      const result = await deleteDocument({
+        documentId: selectedItem.id,
+        userId: user.id,
+      });
 
-      if (error) throw error;
+      if (!result.success) {
+        throw new Error(result.error || "Document deletion failed");
+      }
 
       // Log the deletion
       await supabase.from("change_logs").insert([
@@ -483,30 +528,67 @@ export default function DocumentsList({ businessId }) {
         },
       ]);
 
-      // If there was a file in storage, delete it too
-      if (selectedItem.google_drive_id) {
-        // Extract the filename from the URL
-        const url = new URL(selectedItem.google_drive_id);
-        const pathParts = url.pathname.split("/");
-        const fileName = pathParts[pathParts.length - 1];
-
-        await supabase.storage
-          .from("business-documents")
-          .remove([`documents${currentPath}${fileName}`]);
-      }
-
       // Refresh documents
       fetchDocuments();
       handleDeleteDialogClose();
     } catch (error) {
       console.error("Error deleting document:", error);
-      alert("Error deleting document. Please try again.");
+
+      // Provide more specific error messages based on the error
+      let errorMessage = "Error deleting document. ";
+
+      if (error.message) {
+        if (error.message.includes("Dropbox is not configured")) {
+          errorMessage =
+            "Dropbox is not properly configured. Please contact an administrator to set up the Dropbox integration.";
+        } else if (
+          error.message.includes("Network error") ||
+          error.message.includes("timed out")
+        ) {
+          errorMessage =
+            "Network error during deletion. Please check your internet connection and try again.";
+        } else if (
+          error.message.includes("access_token") ||
+          error.message.includes("authorization") ||
+          error.message.includes("401")
+        ) {
+          errorMessage =
+            "Authorization error with Dropbox. The access token may have expired. Please contact an administrator.";
+        } else if (error.message.includes("path/not_found")) {
+          errorMessage =
+            "The file could not be found in Dropbox. It may have been moved or deleted already.";
+        } else if (error.message.includes("path/restricted")) {
+          errorMessage =
+            "You don't have permission to delete this file. Please contact an administrator.";
+        } else if (
+          error.message.includes("too_many_requests") ||
+          error.message.includes("429")
+        ) {
+          errorMessage =
+            "Too many requests to Dropbox. Please wait a moment and try again.";
+        } else if (error.message.includes("too_many_write_operations")) {
+          errorMessage =
+            "Too many write operations to Dropbox. Please wait a moment and try again.";
+        } else {
+          // Include the actual error message for other cases
+          errorMessage += error.message;
+        }
+      } else {
+        errorMessage +=
+          "Please try again or contact support if the issue persists.";
+      }
+
+      alert(errorMessage);
     }
   };
 
   const downloadDocument = (item) => {
-    if (item.google_drive_id) {
+    if (item.dropbox_shared_url) {
+      window.open(item.dropbox_shared_url, "_blank");
+    } else if (item.google_drive_id) {
       window.open(item.google_drive_id, "_blank");
+    } else {
+      alert("Download link not available for this document.");
     }
   };
 
@@ -962,7 +1044,7 @@ export default function DocumentsList({ businessId }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleDeleteDialogClose}>Cancel</Button>
-          <Button onClick={deleteDocument} color="error">
+          <Button onClick={deleteDocumentItem} color="error">
             Delete
           </Button>
         </DialogActions>
@@ -988,9 +1070,14 @@ export default function DocumentsList({ businessId }) {
         <DialogContent dividers>
           {selectedItem && (
             <Box sx={{ textAlign: "center" }}>
-              {selectedItem.type === "pdf" && selectedItem.google_drive_id ? (
+              {selectedItem.type === "pdf" &&
+              (selectedItem.dropbox_shared_url ||
+                selectedItem.google_drive_id) ? (
                 <iframe
-                  src={selectedItem.google_drive_id}
+                  src={
+                    selectedItem.dropbox_shared_url ||
+                    selectedItem.google_drive_id
+                  }
                   width="100%"
                   height="500px"
                   title={selectedItem.name}
@@ -1001,7 +1088,10 @@ export default function DocumentsList({ businessId }) {
                   selectedItem.type.toLowerCase(),
                 ) ? (
                 <img
-                  src={selectedItem.google_drive_id}
+                  src={
+                    selectedItem.dropbox_shared_url ||
+                    selectedItem.google_drive_id
+                  }
                   alt={selectedItem.name}
                   style={{ maxWidth: "100%", maxHeight: "500px" }}
                 />

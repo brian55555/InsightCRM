@@ -404,8 +404,12 @@ export default function NotesList({
                   borderBottom: "1px solid",
                   borderColor: "divider",
                   "&:last-child": { borderBottom: "none" },
-                  "&:hover": { backgroundColor: "action.hover" },
+                  "&:hover": {
+                    backgroundColor: "action.hover",
+                    cursor: "pointer",
+                  },
                 }}
+                onClick={() => handleDialogOpen(note)}
               >
                 <Box
                   display="flex"
@@ -456,7 +460,7 @@ export default function NotesList({
                       </Typography>
                     </Box>
                   </Box>
-                  <Box>
+                  <Box onClick={(e) => e.stopPropagation()}>
                     <IconButton
                       aria-label="note actions"
                       onClick={(e) => handleMenuOpen(e, note)}
@@ -465,22 +469,6 @@ export default function NotesList({
                       <MoreVertIcon />
                     </IconButton>
                   </Box>
-                </Box>
-                <Box display="flex" gap={1} mt={1}>
-                  <Button
-                    size="small"
-                    onClick={() => handleViewDialogOpen(note)}
-                    variant="outlined"
-                  >
-                    View
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => handleDialogOpen(note)}
-                    variant="outlined"
-                  >
-                    Edit
-                  </Button>
                 </Box>
               </Box>
             ))}
